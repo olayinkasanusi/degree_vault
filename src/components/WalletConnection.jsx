@@ -76,10 +76,15 @@ export function WalletConnection({ onConnectionChange }) {
       setAccount(account);
       setIsConnected(true);
 
-      // Load contract
-      const contractAddress = localStorage.getItem("contractAddress");
+      // Load contract from environment variable or localStorage
+      const contractAddress =
+        import.meta.env.VITE_CONTRACT_ADDRESS ||
+        localStorage.getItem("contractAddress");
+
       if (contractAddress) {
         await web3Service.loadContract(ACADEMIC_RECORDS_ABI, contractAddress);
+      } else {
+        setError("Contract address not found. Please deploy the contract and add VITE_CONTRACT_ADDRESS to .env.local");
       }
 
       await loadAccountData(account);

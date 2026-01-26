@@ -232,10 +232,10 @@ export const CONTRACT_BYTECODE =
 // Contract configuration
 export const CONTRACT_CONFIG = {
   // Sepolia testnet configuration
-  networkId: 11155111,
-  networkName: "Sepolia",
-  rpcUrl: "https://sepolia.infura.io/v3/YOUR_INFURA_KEY",
-  contractAddress: null, // Will be set after deployment
+  networkId: import.meta.env.VITE_NETWORK_ID || 11155111,
+  networkName: import.meta.env.VITE_NETWORK_NAME || "Sepolia",
+  rpcUrl: `https://sepolia.infura.io/v3/${import.meta.env.VITE_INFURA_KEY || 'YOUR_INFURA_KEY'}`,
+  contractAddress: import.meta.env.VITE_CONTRACT_ADDRESS || null, // Set in .env.local after deployment
 };
 
 // Record types

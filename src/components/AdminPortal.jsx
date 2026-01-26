@@ -25,19 +25,31 @@ export function AdminPortal() {
     const file = event.target.files[0];
     setSelectedFile(file);
     setUploadStatus(null);
+    setRecordHash(""); // Clear hash when new file is selected
   };
 
   const generateRecordHash = async (file, studentAddress, metadata) => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = async (e) => {
-        const fileContent = e.target.result;
-        const combinedData =
-          fileContent + studentAddress + metadata + Date.now();
-        const hash = web3Service.generateHash(combinedData);
-        resolve(hash);
+        try {
+          // Use ArrayBuffer for binary safety
+          const fileBuffer = e.target.result;
+          // Combine file buffer and metadata
+          const metaString = studentAddress + metadata + Date.now();
+          const metaBuffer = new TextEncoder().encode(metaString);
+          // Concatenate buffers
+          const combined = new Uint8Array(fileBuffer.byteLength + metaBuffer.byteLength);
+          combined.set(new Uint8Array(fileBuffer), 0);
+          combined.set(metaBuffer, fileBuffer.byteLength);
+          const hash = await web3Service.generateHash(combined.buffer);
+          resolve(hash);
+        } catch (err) {
+          reject(err);
+        }
       };
-      reader.readAsText(file);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
     });
   };
 
@@ -57,6 +69,7 @@ export function AdminPortal() {
       });
       return;
     }
+
 
     setIsUploading(true);
     setUploadStatus({ type: "info", message: "Generating record hash..." });
@@ -83,17 +96,16 @@ export function AdminPortal() {
 
       setUploadStatus({
         type: "success",
-        message: `Academic record successfully issued! Hash: ${hash.substring(
-          0,
-          10
-        )}...`,
+        message: `Academic record successfully issued! Hash: ${hash.substring(0, 10)}...`,
       });
 
-      // Reset form
+      // Reset form except for recordHash
       setSelectedFile(null);
       setStudentAddress("");
       setMetadata("");
-      document.getElementById("file-input").value = "";
+      if (document.getElementById("file-input")) {
+        document.getElementById("file-input").value = "";
+      }
     } catch (error) {
       console.error("Upload error:", error);
       setUploadStatus({
@@ -189,13 +201,12 @@ export function AdminPortal() {
 
           {uploadStatus && (
             <div
-              className={`p-4 rounded-md flex items-center gap-2 ${
-                uploadStatus.type === "success"
+              className={`p-4 rounded-md flex items-center gap-2 ${uploadStatus.type === "success"
                   ? "bg-green-50 text-green-700"
                   : uploadStatus.type === "error"
-                  ? "bg-red-50 text-red-700"
-                  : "bg-blue-50 text-blue-700"
-              }`}
+                    ? "bg-red-50 text-red-700"
+                    : "bg-blue-50 text-blue-700"
+                }`}
             >
               {uploadStatus.type === "success" ? (
                 <CheckCircle className="h-5 w-5" />
@@ -208,11 +219,23 @@ export function AdminPortal() {
             </div>
           )}
 
+
           {recordHash && (
             <div className="p-4 bg-gray-50 rounded-md">
-              <h3 className="font-medium text-gray-900 mb-2">
-                Record Hash Generated
-              </h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium text-gray-900">
+                  Record Hash Generated
+                </h3>
+                <button
+                  className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 focus:outline-none"
+                  onClick={() => {
+                    navigator.clipboard.writeText(recordHash);
+                  }}
+                  title="Copy hash to clipboard"
+                >
+                  Copy
+                </button>
+              </div>
               <p className="text-sm text-gray-600 break-all">{recordHash}</p>
             </div>
           )}

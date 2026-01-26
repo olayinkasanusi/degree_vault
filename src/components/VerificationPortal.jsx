@@ -33,7 +33,7 @@ export function VerificationPortal() {
     setVerificationResult(null);
 
     try {
-      // Call smart contract to verify the record
+      // Call mock/localStorage to verify the record
       const result = await web3Service.readContractMethod(
         "verifyRecord",
         recordHash
@@ -45,36 +45,21 @@ export function VerificationPortal() {
           isValid: true,
           institution: result[1],
           student: result[2],
-          timestamp: result[3],
+          timestamp: result[3], // Already ms in mock
           recordHash: recordHash,
         });
       } else {
         setVerificationResult({
           isValid: false,
-          message: "Record not found or invalid hash",
+          message: "Record not found in local demo storage. The hash may be invalid or not issued in this session.",
         });
       }
     } catch (error) {
       console.error("Verification error:", error);
-
-      // For demo purposes, simulate verification result
-      if (recordHash.startsWith("0x")) {
-        setVerificationResult({
-          isValid: true,
-          institution: "0xabcdef1234567890abcdef1234567890abcdef12",
-          student: "0x1234567890abcdef1234567890abcdef12345678",
-          timestamp: Date.now() - 86400000,
-          recordHash: recordHash,
-          recordType: "degree",
-          metadata:
-            "Bachelor of Science in Computer Science - University of Technology",
-        });
-      } else {
-        setVerificationResult({
-          isValid: false,
-          message: "Invalid record hash format",
-        });
-      }
+      setVerificationResult({
+        isValid: false,
+        message: `Verification failed: ${error.message}`,
+      });
     } finally {
       setIsVerifying(false);
     }

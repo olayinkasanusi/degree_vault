@@ -31,31 +31,35 @@ export function StudentPortal() {
       const account = web3Service.account;
       setStudentAddress(account);
 
-      // In a real implementation, you would fetch the student's record hashes
-      // and then get the record details from the blockchain
-      const mockRecords = [
-        {
-          id: "1",
-          hash: "0x1234567890abcdef...",
-          recordType: "degree",
-          metadata:
-            "Bachelor of Science in Computer Science - University of Technology",
-          timestamp: Date.now() - 86400000,
-          institution: "0xabcd...efgh",
-        },
-        {
-          id: "2",
-          hash: "0xabcdef1234567890...",
-          recordType: "certificate",
-          metadata: "Blockchain Development Certificate - Tech Institute",
-          timestamp: Date.now() - 172800000,
-          institution: "0x1234...5678",
-        },
-      ];
+      if (!account) {
+        console.warn("No account connected");
+        setRecords([]);
+        return;
+      }
 
-      setRecords(mockRecords);
+      // Fetch student records from blockchain
+      // Note: This requires implementing a function in the smart contract
+      // For now, we'll use the public records mapping and loop through them
+      // In production, add a proper getStudentRecords function to the contract
+
+      // For demo, show a placeholder until contract function is available
+      const recordsData = [];
+
+      // Try to fetch from blockchain if contract is loaded
+      if (web3Service.contract) {
+        try {
+          // This would need a getStudentRecords() function in the contract
+          // For now, display a message to deploy that function
+          console.log("To enable full functionality, add getStudentRecords() to smart contract");
+        } catch (error) {
+          console.warn("Contract function not yet available:", error);
+        }
+      }
+
+      setRecords(recordsData);
     } catch (error) {
       console.error("Error loading records:", error);
+      setRecords([]);
     } finally {
       setIsLoading(false);
     }

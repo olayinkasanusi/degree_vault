@@ -1,101 +1,102 @@
-import Web3 from "web3";
 
+// MOCK/DEMO Web3Service for UI prototyping (no real blockchain interaction)
 export class Web3Service {
   constructor() {
     this.web3 = null;
-    this.account = null;
+    this.account = "0x2CCa4F7892233d74Eb0289A5C5C6dCC743048217";
     this.contract = null;
   }
 
   async connectWallet() {
-    if (typeof window.ethereum !== "undefined") {
-      try {
-        // Request account access
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-
-        this.web3 = new Web3(window.ethereum);
-        const accounts = await this.web3.eth.getAccounts();
-        this.account = accounts[0];
-
-        return this.account;
-      } catch (error) {
-        console.error("Error connecting wallet:", error);
-        throw error;
-      }
-    } else {
-      throw new Error(
-        "MetaMask not detected. Please install MetaMask to use this application."
-      );
-    }
+    // Instantly "connect" with a fake account
+    return this.account;
   }
 
   async getNetwork() {
-    if (!this.web3) throw new Error("Web3 not initialized");
-
-    const networkId = await this.web3.eth.net.getId();
-    return networkId;
+    return 11155111; // Sepolia
   }
 
   async getBalance() {
-    if (!this.web3 || !this.account)
-      throw new Error("Web3 or account not initialized");
-
-    const balance = await this.web3.eth.getBalance(this.account);
-    return this.web3.utils.fromWei(balance, "ether");
+    return "10.0"; // 10 ETH
   }
 
-  async deployContract(abi, bytecode, ...constructorArgs) {
-    if (!this.web3 || !this.account)
-      throw new Error("Web3 or account not initialized");
-
-    const contract = new this.web3.eth.Contract(abi);
-
-    const deployTx = contract.deploy({
-      data: bytecode,
-      arguments: constructorArgs,
-    });
-
-    const gas = await deployTx.estimateGas({ from: this.account });
-
-    const result = await deployTx.send({
-      from: this.account,
-      gas: gas,
-      gasPrice: await this.web3.eth.getGasPrice(),
-    });
-
-    this.contract = new this.web3.eth.Contract(abi, result.options.address);
-    return result.options.address;
+  async deployContract() {
+    return "0x6e2A8e6e6b6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e";
   }
 
-  async loadContract(abi, address) {
-    if (!this.web3) throw new Error("Web3 not initialized");
-
-    this.contract = new this.web3.eth.Contract(abi, address);
-    return this.contract;
+  async loadContract() {
+    return true;
   }
+
 
   async callContractMethod(methodName, ...args) {
-    if (!this.contract || !this.account)
-      throw new Error("Contract or account not initialized");
-
-    return await this.contract.methods[methodName](...args).send({
-      from: this.account,
-      gas: 3000000,
-    });
+    // Only handle 'issueRecord' for localStorage mock
+    if (methodName === "issueRecord") {
+      const [student, recordHash, recordType, metadata] = args;
+      const record = {
+        institution: this.account,
+        student,
+        recordType,
+        metadata,
+        timestamp: Date.now(),
+        exists: true
+      };
+      // Store in localStorage by hash
+      let all = JSON.parse(localStorage.getItem("mockRecords") || "{}")
+      all[recordHash] = record;
+      localStorage.setItem("mockRecords", JSON.stringify(all));
+      // Also store for student
+      let studentMap = JSON.parse(localStorage.getItem("mockStudentRecords") || "{}")
+      if (!studentMap[student]) studentMap[student] = [];
+      studentMap[student].push(recordHash);
+      localStorage.setItem("mockStudentRecords", JSON.stringify(studentMap));
+      return { status: true, transactionHash: "0xMOCKTX" };
+    }
+    // Simulate a successful transaction for other methods
+    return { status: true, transactionHash: "0xMOCKTX" };
   }
 
   async readContractMethod(methodName, ...args) {
-    if (!this.contract) throw new Error("Contract not initialized");
-
-    return await this.contract.methods[methodName](...args).call();
+    if (methodName === "verifyRecord") {
+      const [recordHash] = args;
+      let all = JSON.parse(localStorage.getItem("mockRecords") || "{}");
+      const record = all[recordHash];
+      if (record && record.exists) {
+        // Solidity returns: (bool exists, address institution, address student, uint256 timestamp)
+        return [true, record.institution, record.student, record.timestamp];
+      } else {
+        return [false, "0x0000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000", 0];
+      }
+    }
+    if (methodName === "getStudentRecords") {
+      const [student] = args;
+      let studentMap = JSON.parse(localStorage.getItem("mockStudentRecords") || "{}")
+      return studentMap[student] || [];
+    }
+    // Add more mocks as needed
+    return [];
   }
 
-  generateHash(data) {
-    return this.web3.utils.keccak256(data);
+
+  async generateHash(data) {
+    // Use browser SubtleCrypto to hash any string or ArrayBuffer
+    let buffer;
+    if (typeof data === "string") {
+      buffer = new TextEncoder().encode(data);
+    } else if (data instanceof ArrayBuffer) {
+      buffer = new Uint8Array(data);
+    } else {
+      throw new Error("Unsupported data type for hashing");
+    }
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", buffer);
+    // Convert buffer to hex string
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    return "0x" + hashHex;
   }
 
   isValidAddress(address) {
-    return this.web3.utils.isAddress(address);
+    return true;
   }
 }
 
