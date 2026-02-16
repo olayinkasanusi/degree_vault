@@ -25,9 +25,17 @@ export function StudentPortal() {
   const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [studentAddress, setStudentAddress] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 5;
 
   useEffect(() => {
-    loadStudentRecords();
+    const init = async () => {
+      const account = web3Service.account;
+      setStudentAddress(account);
+      await loadAllRecords(1);
+    };
+    init();
   }, []);
 
   const loadAllRecords = async (page) => {
