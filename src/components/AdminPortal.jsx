@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Upload, Hash, CheckCircle, AlertCircle } from "lucide-react";
 import { web3Service } from "@/lib/web3";
 import { ACADEMIC_RECORDS_ABI, RECORD_TYPES } from "@/lib/contracts";
+import { supabase } from "../lib/supabase";
 
 export function AdminPortal() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -25,7 +26,7 @@ export function AdminPortal() {
     const file = event.target.files[0];
     setSelectedFile(file);
     setUploadStatus(null);
-    setRecordHash(""); // Clear hash when new file is selected
+    setRecordHash("");
   };
 
   const generateRecordHash = async (file, studentAddress, metadata) => {
@@ -33,13 +34,12 @@ export function AdminPortal() {
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
-          // Use ArrayBuffer for binary safety
           const fileBuffer = e.target.result;
-          // Combine file buffer and metadata
           const metaString = studentAddress + metadata + Date.now();
           const metaBuffer = new TextEncoder().encode(metaString);
-          // Concatenate buffers
-          const combined = new Uint8Array(fileBuffer.byteLength + metaBuffer.byteLength);
+          const combined = new Uint8Array(
+            fileBuffer.byteLength + metaBuffer.byteLength,
+          );
           combined.set(new Uint8Array(fileBuffer), 0);
           combined.set(metaBuffer, fileBuffer.byteLength);
           const hash = await web3Service.generateHash(combined.buffer);
@@ -70,36 +70,54 @@ export function AdminPortal() {
       return;
     }
 
-
     setIsUploading(true);
-    setUploadStatus({ type: "info", message: "Generating record hash..." });
+    setUploadStatus({ type: "info", message: "Uploading to Database..." });
 
     try {
-      // Generate hash for the academic record
+      const fileExt = selectedFile.name.split(".").pop();
+      const fileName = `${studentAddress}-${Date.now()}.${fileExt}`;
+      const filePath = `records/${fileName}`;
+
+      const { error: storageError } = await supabase.storage
+        .from("academic-records")
+        .upload(filePath, selectedFile);
+
+      if (storageError) throw new Error(`Error uploading to database`);
+
       const hash = await generateRecordHash(
         selectedFile,
         studentAddress,
-        metadata
+        metadata,
       );
       setRecordHash(hash);
 
       setUploadStatus({ type: "info", message: "Uploading to blockchain..." });
 
-      // Issue record on blockchain
       await web3Service.callContractMethod(
         "issueRecord",
         studentAddress,
         hash,
         recordType,
-        metadata
+        metadata,
       );
+
+      const { error: dbError } = await supabase.from("records").insert([
+        {
+          student_address: studentAddress,
+          record_hash: hash,
+          record_type: recordType,
+          file_path: filePath,
+          metadata: metadata,
+        },
+      ]);
+
+      if (dbError) throw dbError;
 
       setUploadStatus({
         type: "success",
         message: `Academic record successfully issued! Hash: ${hash.substring(0, 10)}...`,
       });
 
-      // Reset form except for recordHash
       setSelectedFile(null);
       setStudentAddress("");
       setMetadata("");
@@ -201,12 +219,13 @@ export function AdminPortal() {
 
           {uploadStatus && (
             <div
-              className={`p-4 rounded-md flex items-center gap-2 ${uploadStatus.type === "success"
+              className={`p-4 rounded-md flex items-center gap-2 ${
+                uploadStatus.type === "success"
                   ? "bg-green-50 text-green-700"
                   : uploadStatus.type === "error"
                     ? "bg-red-50 text-red-700"
                     : "bg-blue-50 text-blue-700"
-                }`}
+              }`}
             >
               {uploadStatus.type === "success" ? (
                 <CheckCircle className="h-5 w-5" />
@@ -218,7 +237,6 @@ export function AdminPortal() {
               <span>{uploadStatus.message}</span>
             </div>
           )}
-
 
           {recordHash && (
             <div className="p-4 bg-gray-50 rounded-md">

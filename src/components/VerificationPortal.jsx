@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,15 +13,24 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Building,
   User,
+  FileText,
+  ExternalLink,
+  Download,
 } from "lucide-react";
-import { web3Service } from "@/lib/web3";
+import { supabase } from "@/lib/supabase";
 
 export function VerificationPortal() {
   const [recordHash, setRecordHash] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState(null);
+
+  const getFileUrl = (path) => {
+    const { data } = supabase.storage
+      .from("academic-records")
+      .getPublicUrl(path);
+    return data.publicUrl;
+  };
 
   const verifyRecord = async () => {
     if (!recordHash.trim()) {
@@ -33,32 +42,36 @@ export function VerificationPortal() {
     setVerificationResult(null);
 
     try {
-      // Call mock/localStorage to verify the record
-      const result = await web3Service.readContractMethod(
-        "verifyRecord",
-        recordHash
-      );
+      const { data, error } = await supabase
+        .from("records")
+        .select("*")
+        .eq("record_hash", recordHash.trim())
+        .maybeSingle();
 
-      if (result[0]) {
-        // Record exists
+      if (error) throw error;
+
+      if (data) {
         setVerificationResult({
           isValid: true,
-          institution: result[1],
-          student: result[2],
-          timestamp: result[3], // Already ms in mock
-          recordHash: recordHash,
+          student: data.student_address,
+          timestamp: data.created_at,
+          recordHash: data.record_hash,
+          recordType: data.record_type,
+          metadata: data.metadata,
+          fileUrl: getFileUrl(data.file_path),
+          fileName: data.file_path.split("/").pop(),
         });
       } else {
         setVerificationResult({
           isValid: false,
-          message: "Record not found in local demo storage. The hash may be invalid or not issued in this session.",
+          message: "No record found with this hash in the global registry.",
         });
       }
     } catch (error) {
       console.error("Verification error:", error);
       setVerificationResult({
         isValid: false,
-        message: `Verification failed: ${error.message}`,
+        message: `System error during verification: ${error.message}`,
       });
     } finally {
       setIsVerifying(false);
@@ -67,21 +80,17 @@ export function VerificationPortal() {
 
   const handleHashInput = (e) => {
     setRecordHash(e.target.value);
-    setVerificationResult(null);
+    if (verificationResult) setVerificationResult(null);
   };
 
-  const formatDate = (timestamp) => {
-    return new Date(timestamp).toLocaleString("en-US", {
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
-
-  const formatAddress = (address) => {
-    return `${address.substring(0, 6)}...${address.substring(38)}`;
   };
 
   return (
@@ -91,180 +100,151 @@ export function VerificationPortal() {
           Record Verification
         </h1>
         <p className="text-gray-600 mt-2">
-          Verify the authenticity of academic records on the blockchain
+          Verify authenticity and access original academic documents
         </p>
       </div>
 
-      <Card>
+      <Card className="border-2 shadow-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
             Verify Academic Record
           </CardTitle>
           <CardDescription>
-            Enter the record hash to verify its authenticity and view details
+            Enter the unique blockchain hash to retrieve the verified document
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Record Hash
-            </label>
-            <div className="flex gap-3">
-              <Input
-                type="text"
-                placeholder="Enter record hash (0x...)"
-                value={recordHash}
-                onChange={handleHashInput}
-                className="flex-1 font-mono"
-              />
-              <Button
-                onClick={verifyRecord}
-                disabled={isVerifying || !recordHash.trim()}
-              >
-                {isVerifying ? "Verifying..." : "Verify"}
-              </Button>
-            </div>
+          <div className="flex gap-3">
+            <Input
+              type="text"
+              placeholder="0x..."
+              value={recordHash}
+              onChange={handleHashInput}
+              className="flex-1 font-mono"
+              onKeyDown={(e) => e.key === "Enter" && verifyRecord()}
+            />
+            <Button
+              onClick={verifyRecord}
+              disabled={isVerifying || !recordHash.trim()}
+            >
+              {isVerifying ? "Searching..." : "Verify Record"}
+            </Button>
           </div>
 
           {verificationResult && (
-            <div className="mt-6">
+            <div className="mt-6 animate-in fade-in slide-in-from-top-4 duration-300">
               {verificationResult.isValid ? (
-                <Card className="border-green-200 bg-green-50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-green-700">
-                      <CheckCircle className="h-5 w-5" />
-                      Record Verified Successfully
-                    </CardTitle>
-                    <CardDescription className="text-green-600">
-                      This academic record is authentic and verified on the
-                      blockchain
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Record Hash
-                        </label>
-                        <p className="text-sm text-gray-900 font-mono break-all">
-                          {verificationResult.recordHash}
-                        </p>
-                      </div>
-
-                      {verificationResult.recordType && (
+                <div className="space-y-6">
+                  <Card className="border-green-200 bg-green-50/30">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-green-700 text-lg">
+                        <CheckCircle className="h-5 w-5" />
+                        Authenticity Confirmed
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div className="md:col-span-2 bg-white p-3 rounded border border-green-100 mb-2">
+                          <span className="block text-[10px] font-bold text-gray-400 uppercase">
+                            Document Fingerprint
+                          </span>
+                          <span className="font-mono break-all text-xs">
+                            {verificationResult.recordHash}
+                          </span>
+                        </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <span className="text-gray-500 block">
                             Record Type
-                          </label>
-                          <p className="text-sm text-gray-900 capitalize">
+                          </span>
+                          <span className="font-semibold capitalize">
                             {verificationResult.recordType}
-                          </p>
+                          </span>
                         </div>
-                      )}
-
-                      {verificationResult.metadata && (
+                        <div>
+                          <span className="text-gray-500 block">Issued On</span>
+                          <span className="font-semibold">
+                            {formatDate(verificationResult.timestamp)}
+                          </span>
+                        </div>
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Details
-                          </label>
-                          <p className="text-sm text-gray-900">
-                            {verificationResult.metadata}
-                          </p>
+                          <span className="text-gray-500 block">
+                            Student Wallet
+                          </span>
+                          <span className="font-mono text-xs flex items-center gap-1">
+                            <User className="h-3 w-3" />{" "}
+                            {verificationResult.student}
+                          </span>
                         </div>
-                      )}
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Student Address
-                        </label>
-                        <p className="text-sm text-gray-900 font-mono flex items-center gap-1">
-                          <User className="h-4 w-4" />
-                          {formatAddress(verificationResult.student)}
-                        </p>
                       </div>
+                    </CardContent>
+                  </Card>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Issuing Institution
-                        </label>
-                        <p className="text-sm text-gray-900 font-mono flex items-center gap-1">
-                          <Building className="h-4 w-4" />
-                          {formatAddress(verificationResult.institution)}
-                        </p>
+                  <Card className="border-blue-200 shadow-sm">
+                    <CardHeader className="bg-blue-50/50 pb-4">
+                      <CardTitle className="text-md flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                        Verified Document Access
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                      <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 border rounded-lg bg-gray-50">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white rounded shadow-sm">
+                            <FileText className="h-8 w-8 text-blue-500" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 truncate max-w-[200px]">
+                              {verificationResult.fileName}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Academic Credential
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 w-full md:w-auto">
+                          <Button
+                            variant="outline"
+                            className="flex-1 md:flex-none"
+                            onClick={() =>
+                              window.open(verificationResult.fileUrl, "_blank")
+                            }
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            View
+                          </Button>
+                          <Button
+                            className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700"
+                            onClick={() => {
+                              const link = document.createElement("a");
+                              link.href = verificationResult.fileUrl;
+                              link.download = verificationResult.fileName;
+                              link.click();
+                            }}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </Button>
+                        </div>
                       </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Issue Date
-                        </label>
-                        <p className="text-sm text-gray-900 flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {formatDate(verificationResult.timestamp)}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </div>
               ) : (
                 <Card className="border-red-200 bg-red-50">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-700">
+                    <CardTitle className="flex items-center gap-2 text-red-700 text-lg">
                       <XCircle className="h-5 w-5" />
                       Verification Failed
                     </CardTitle>
-                    <CardDescription className="text-red-600">
-                      {verificationResult.message ||
-                        "The provided record hash could not be verified"}
-                    </CardDescription>
+                    <p className="text-sm text-red-600 mt-1">
+                      {verificationResult.message}
+                    </p>
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-sm text-red-700">
-                      <p>Possible reasons for verification failure:</p>
-                      <ul className="list-disc list-inside mt-2 space-y-1">
-                        <li>Invalid or incorrect record hash</li>
-                        <li>Record does not exist on the blockchain</li>
-                        <li>Network connectivity issues</li>
-                        <li>
-                          Record may have been issued on a different network
-                        </li>
-                      </ul>
-                    </div>
-                  </CardContent>
                 </Card>
               )}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle>How to Verify Records</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm text-gray-600">
-            <p>
-              <strong>1. Obtain the Record Hash:</strong> The record hash is a
-              unique identifier provided when an academic record is issued on
-              the blockchain.
-            </p>
-            <p>
-              <strong>2. Enter the Hash:</strong> Paste the complete record hash
-              in the verification field above. It should start with "0x"
-              followed by alphanumeric characters.
-            </p>
-            <p>
-              <strong>3. Verify:</strong> Click the "Verify" button to check the
-              record against the blockchain. The verification will show if the
-              record is authentic and display its details.
-            </p>
-            <p>
-              <strong>4. Review Results:</strong> A verified record will show
-              green with all details including issuing institution, student
-              address, and timestamp.
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

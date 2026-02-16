@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,56 +13,62 @@ import {
   Download,
   Calendar,
   Building,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  User,
 } from "lucide-react";
 import { web3Service } from "@/lib/web3";
+import { supabase } from "@/lib/supabase";
 
 export function StudentPortal() {
   const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [studentAddress, setStudentAddress] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 5;
 
   useEffect(() => {
-    loadStudentRecords();
+    const init = async () => {
+      web3Service.account;
+      await loadAllRecords(1);
+    };
+    init();
   }, []);
 
-  const loadStudentRecords = async () => {
+  const loadAllRecords = async (page) => {
     try {
       setIsLoading(true);
-      const account = web3Service.account;
-      setStudentAddress(account);
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
-      if (!account) {
-        console.warn("No account connected");
-        setRecords([]);
-        return;
-      }
+      const { data, error, count } = await supabase
+        .from("records")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
-      // Fetch student records from blockchain
-      // Note: This requires implementing a function in the smart contract
-      // For now, we'll use the public records mapping and loop through them
-      // In production, add a proper getStudentRecords function to the contract
+      if (error) throw error;
 
-      // For demo, show a placeholder until contract function is available
-      const recordsData = [];
-
-      // Try to fetch from blockchain if contract is loaded
-      if (web3Service.contract) {
-        try {
-          // This would need a getStudentRecords() function in the contract
-          // For now, display a message to deploy that function
-          console.log("To enable full functionality, add getStudentRecords() to smart contract");
-        } catch (error) {
-          console.warn("Contract function not yet available:", error);
-        }
-      }
-
-      setRecords(recordsData);
+      setRecords(data || []);
+      setTotalCount(count || 0);
     } catch (error) {
       console.error("Error loading records:", error);
-      setRecords([]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    loadAllRecords(newPage);
+  };
+
+  const getPublicUrl = (filePath) => {
+    const { data } = supabase.storage
+      .from("academic-records")
+      .getPublicUrl(filePath);
+    return data.publicUrl;
   };
 
   const generateVerificationLink = (recordHash) => {
@@ -71,16 +77,15 @@ export function StudentPortal() {
   };
 
   const shareRecord = (record) => {
-    const verificationLink = generateVerificationLink(record.hash);
+    const verificationLink = generateVerificationLink(record.record_hash);
 
     if (navigator.share) {
       navigator.share({
         title: `Academic Record Verification`,
-        text: `Verify my ${record.recordType}: ${record.metadata}`,
+        text: `Verify ${record.record_type}: ${record.metadata}`,
         url: verificationLink,
       });
     } else {
-      // Fallback: copy to clipboard
       navigator.clipboard.writeText(verificationLink).then(() => {
         alert("Verification link copied to clipboard!");
       });
@@ -88,15 +93,13 @@ export function StudentPortal() {
   };
 
   const downloadRecord = (record) => {
-    // In a real implementation, this would download the actual document
-    // For now, we'll create a verification document
     const verificationData = {
-      recordHash: record.hash,
-      recordType: record.recordType,
+      recordHash: record.record_hash,
+      recordType: record.record_type,
       metadata: record.metadata,
-      timestamp: record.timestamp,
-      studentAddress: studentAddress,
-      verificationLink: generateVerificationLink(record.hash),
+      timestamp: record.created_at,
+      studentAddress: record.student_address,
+      verificationLink: generateVerificationLink(record.record_hash),
     };
 
     const blob = new Blob([JSON.stringify(verificationData, null, 2)], {
@@ -106,15 +109,15 @@ export function StudentPortal() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `academic-record-${record.recordType}-${Date.now()}.json`;
+    a.download = `record-${record.record_hash.substring(0, 8)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const formatDate = (timestamp) => {
-    return new Date(timestamp).toLocaleDateString("en-US", {
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -122,12 +125,12 @@ export function StudentPortal() {
   };
 
   const getRecordIcon = (recordType) => {
-    switch (recordType) {
+    switch (recordType?.toLowerCase()) {
       case "degree":
       case "diploma":
-        return <GraduationCap className="h-5 w-5" />;
+        return <GraduationCap className="h-5 w-5 text-blue-600" />;
       default:
-        return <GraduationCap className="h-5 w-5" />;
+        return <GraduationCap className="h-5 w-5 text-gray-600" />;
     }
   };
 
@@ -135,8 +138,8 @@ export function StudentPortal() {
     return (
       <div className="container mx-auto p-6 max-w-4xl">
         <div className="flex items-center justify-center h-64">
-          <div className="text-lg text-gray-600">
-            Loading your academic records...
+          <div className="animate-pulse text-lg text-gray-600">
+            Loading all academic records...
           </div>
         </div>
       </div>
@@ -147,17 +150,11 @@ export function StudentPortal() {
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">
-          My Academic Records
+          Global Academic Registry
         </h1>
         <p className="text-gray-600 mt-2">
-          View and share your blockchain-verified academic credentials
+          Public directory of all blockchain-verified academic credentials
         </p>
-        {studentAddress && (
-          <p className="text-sm text-gray-500 mt-1">
-            Wallet: {studentAddress.substring(0, 6)}...
-            {studentAddress.substring(38)}
-          </p>
-        )}
       </div>
 
       {records.length === 0 ? (
@@ -165,56 +162,72 @@ export function StudentPortal() {
           <CardContent className="text-center py-12">
             <GraduationCap className="h-12 w-12 mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No Academic Records Found
+              No Records Found
             </h3>
             <p className="text-gray-600">
-              You don't have any blockchain-verified academic records yet.
+              The blockchain registry is currently empty.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6">
           {records.map((record) => (
-            <Card key={record.id} className="overflow-hidden">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  {getRecordIcon(record.recordType)}
-                  <div>
-                    <div className="capitalize text-lg">
-                      {record.recordType}
-                    </div>
-                    <div className="text-sm text-gray-600 font-normal">
-                      {record.metadata}
+            <Card
+              key={record.id}
+              className="overflow-hidden border-l-4 border-l-slate-800 shadow-sm"
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {getRecordIcon(record.record_type)}
+                    <div>
+                      <div className="capitalize text-lg">
+                        {record.record_type}
+                      </div>
+                      <div className="text-sm text-gray-500 font-normal">
+                        {record.metadata}
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-blue-600 hover:text-blue-700"
+                    onClick={() =>
+                      window.open(getPublicUrl(record.file_path), "_blank")
+                    }
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View Doc
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Record Hash
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                      Student Address
                     </label>
-                    <p className="text-sm text-gray-900 font-mono break-all">
-                      {record.hash}
-                    </p>
+                    <div className="flex items-center gap-2 text-xs text-gray-900 font-mono bg-blue-50 p-2 rounded">
+                      <User className="h-3 w-3 text-blue-500" />
+                      {record.student_address}
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
                       Issue Date
                     </label>
-                    <p className="text-sm text-gray-900 flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      {formatDate(record.timestamp)}
+                    <p className="text-sm text-gray-900 flex items-center gap-1 py-1">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      {formatDate(record.created_at)}
                     </p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Issuing Institution
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                      Blockchain Hash
                     </label>
-                    <p className="text-sm text-gray-900 flex items-center gap-1 font-mono">
-                      <Building className="h-4 w-4" />
-                      {record.institution}
+                    <p className="text-[10px] md:text-xs text-gray-400 font-mono break-all italic">
+                      {record.record_hash}
                     </p>
                   </div>
                 </div>
@@ -223,23 +236,49 @@ export function StudentPortal() {
                   <Button
                     onClick={() => shareRecord(record)}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex-1 md:flex-none flex items-center gap-2"
                   >
                     <Share2 className="h-4 w-4" />
-                    Share for Verification
+                    Share Verification
                   </Button>
                   <Button
                     onClick={() => downloadRecord(record)}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex-1 md:flex-none flex items-center gap-2"
                   >
                     <Download className="h-4 w-4" />
-                    Download
+                    Metadata
                   </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
+
+          {totalCount > pageSize && (
+            <div className="flex items-center justify-between mt-4 px-2">
+              <p className="text-sm text-gray-600">
+                Showing {records.length} of {totalCount} records
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 1}
+                  onClick={() => handlePageChange(currentPage - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage * pageSize >= totalCount}
+                  onClick={() => handlePageChange(currentPage + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
