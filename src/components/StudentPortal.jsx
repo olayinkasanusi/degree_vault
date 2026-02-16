@@ -24,16 +24,10 @@ import { supabase } from "@/lib/supabase";
 export function StudentPortal() {
   const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 5;
+  const [studentAddress, setStudentAddress] = useState("");
 
   useEffect(() => {
-    const init = async () => {
-      web3Service.account;
-      await loadAllRecords(1);
-    };
-    init();
+    loadStudentRecords();
   }, []);
 
   const loadAllRecords = async (page) => {
